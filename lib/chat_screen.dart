@@ -15,47 +15,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
-  @override
-  void initState() {
-    super.initState();
-    // Prompt for API Key if not set (simplified for demo)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _showApiKeyDialog();
-    });
-  }
-
-  void _showApiKeyDialog() {
-    final textController = TextEditingController();
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Enter Gemini API Key'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Get a free API key from Google AI Studio.'),
-            TextField(
-              controller: textController,
-              decoration: const InputDecoration(hintText: 'Paste API Key here'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              if (textController.text.isNotEmpty) {
-                context.read<ChatProvider>().initModel(textController.text.trim());
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _handleSubmitted(String text) {
     if (text.trim().isEmpty) return;
     _textController.clear();
@@ -67,18 +26,13 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI Chat Assistant'),
+        title: const Text('Free AI Chat'),
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: () => context.read<ChatProvider>().clearChat(),
             tooltip: 'Clear Chat',
-          ),
-          IconButton(
-            icon: const Icon(Icons.key),
-            onPressed: _showApiKeyDialog,
-            tooltip: 'Update API Key',
           ),
         ],
       ),
@@ -92,9 +46,13 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey),
+                        Icon(Icons.smart_toy_outlined, size: 80, color: Colors.grey),
                         SizedBox(height: 16),
-                        Text('Start a conversation!', style: TextStyle(color: Colors.grey)),
+                        Text(
+                          'Ask me anything!\nNo API Key required.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey, fontSize: 16),
+                        ),
                       ],
                     ),
                   );
@@ -195,6 +153,10 @@ class _MessageBubble extends StatelessWidget {
                 data: message.text,
                 styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
                   p: TextStyle(color: colorScheme.onSurfaceVariant),
+                  code: TextStyle(
+                    backgroundColor: colorScheme.surface,
+                    fontFamily: 'monospace',
+                  ),
                 ),
               ),
             ] else

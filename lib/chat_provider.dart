@@ -1,36 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'message_model.dart';
 
 class ChatProvider extends ChangeNotifier {
-  List<Message> _messages = [];
+  final List<Message> _messages = [];
   bool _isLoading = false;
-  GenerativeModel? _model;
-  final String _apiKey = ""; // TODO: Add your API Key here or use a mechanism to input it
 
   List<Message> get messages => _messages;
   bool get isLoading => _isLoading;
 
-  void initModel(String apiKey) {
-    _model = GenerativeModel(
-      model: 'gemini-pro',
-      apiKey: apiKey,
-    );
-    notifyListeners();
-  }
-
   Future<void> sendMessage(String text) async {
-    if (_model == null) {
-      _addMessage(Message(
-        id: const Uuid().v4(),
-        text: "Please set your API Key first.",
-        isUser: false,
-        timestamp: DateTime.now(),
-      ));
-      return;
-    }
-
+    // Add user message
     final userMessage = Message(
       id: const Uuid().v4(),
       text: text,
@@ -41,27 +22,39 @@ class ChatProvider extends ChangeNotifier {
     _setLoading(true);
 
     try {
-      final content = [Content.text(text)];
-      final response = await _model!.generateContent(content);
+      // Using Pollinations.ai API which is free and requires no API key.
+      // It usually returns direct text.
+      final url = Uri.parse('https://text.pollinations.ai/${Uri.encodeComponent(text)}');
+      
+      // Adding a timeout to prevent hanging
+      final response = await http.get(url).timeout(const Duration(seconds: 30));
 
-      final botMessage = Message(
-        id: const Uuid().v4(),
-        text: response.text ?? "No response from AI.",
-        isUser: false,
-        timestamp: DateTime.now(),
-      );
-      _addMessage(botMessage);
+      if (response.statusCode == 200) {
+        final botMessage = Message(
+          id: const Uuid().v4(),
+          text: response.body,
+          isUser: false,
+          timestamp: DateTime.now(),
+        );
+        _addMessage(botMessage);
+      } else {
+        _addErrorMessage("Received error from server: ${response.statusCode}");
+      }
     } catch (e) {
-      final errorMessage = Message(
-        id: const Uuid().v4(),
-        text: "Error: ${e.toString()}",
-        isUser: false,
-        timestamp: DateTime.now(),
-      );
-      _addMessage(errorMessage);
+      _addErrorMessage("Could not connect to AI service. Please check your internet.");
     } finally {
       _setLoading(false);
     }
+  }
+
+  void _addErrorMessage(String errorText) {
+    final errorMessage = Message(
+      id: const Uuid().v4(),
+      text: errorText,
+      isUser: false,
+      timestamp: DateTime.now(),
+    );
+    _addMessage(errorMessage);
   }
 
   void _addMessage(Message message) {
