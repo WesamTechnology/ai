@@ -12,9 +12,9 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <application
-        android:label="App AI"
+        android:label="Wesam Ai"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/launcher_icon"
         android:requestLegacyExternalStorage="true">
         <activity
             android:name=".MainActivity"

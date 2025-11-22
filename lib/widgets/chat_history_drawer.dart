@@ -18,13 +18,13 @@ class ChatHistoryDrawer extends StatelessWidget {
               color: Theme.of(context).colorScheme.primary,
             ),
             accountName: const Text(
-              "Chat History",
+              "Wesam Ai",
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
             ),
             accountEmail: const Text("Your conversations"),
             currentAccountPicture: const CircleAvatar(
               backgroundColor: Colors.white,
-              child: Icon(Icons.history, size: 30),
+              backgroundImage: AssetImage("images/wesam.png"),
             ),
           ),
           Padding(

@@ -33,9 +33,18 @@ dependencies:
   uuid: ^4.4.0
 
 dev_dependencies:
+  flutter_launcher_icons: "^0.14.4"
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  image_path: "images/wesam.png"
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true
+
+
+  assets:
+    - images/
