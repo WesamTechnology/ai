@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../providers/chat_provider.dart';
+import 'package:get/get.dart';
+import '../controllers/chat_controller.dart';
 import '../models/ai_model.dart';
 
 class ModelSelectorDrawer extends StatelessWidget {
@@ -8,8 +8,7 @@ class ModelSelectorDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chatProvider = context.watch<ChatProvider>();
-    final currentModel = chatProvider.currentModel;
+    final ChatController controller = Get.find();
 
     return Drawer(
       child: Column(
@@ -22,7 +21,7 @@ class ModelSelectorDrawer extends StatelessWidget {
               "AI Models",
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
             ),
-            accountEmail: const Text("Select your intelligence"),
+            accountEmail: const Text("Select Intelligence or Creativity"),
             currentAccountPicture: const CircleAvatar(
               backgroundColor: Colors.white,
               child: Text(
@@ -32,10 +31,10 @@ class ModelSelectorDrawer extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: ListView(
+            child: Obx(() => ListView(
               padding: EdgeInsets.zero,
               children: AIModels.availableModels.map((model) {
-                final isSelected = currentModel.id == model.id;
+                final isSelected = controller.currentModel.value.id == model.id;
                 return ListTile(
                   leading: Text(
                     model.iconAsset,
@@ -56,19 +55,12 @@ class ModelSelectorDrawer extends StatelessWidget {
                       ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary)
                       : null,
                   onTap: () {
-                    context.read<ChatProvider>().setModel(model);
-                    Navigator.pop(context); // Close drawer
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text("Switched to ${model.name}"),
-                        duration: const Duration(seconds: 1),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
+                    controller.setModel(model);
+                    Get.back(); // Close drawer
                   },
                 );
               }).toList(),
-            ),
+            )),
           ),
           const Divider(),
           const Padding(

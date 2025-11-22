@@ -1,42 +1,38 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:get/get.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import '../providers/chat_provider.dart';
+import '../controllers/chat_controller.dart';
 import '../models/message_model.dart';
 import '../widgets/model_selector_drawer.dart';
 
-class ChatScreen extends StatefulWidget {
+class ChatScreen extends StatelessWidget {
   const ChatScreen({super.key});
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
-}
-
-class _ChatScreenState extends State<ChatScreen> {
-  final TextEditingController _textController = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
-  final ScrollController _scrollController = ScrollController();
-
-  void _handleSubmitted(String text) {
-    if (text.trim().isEmpty) return;
-    _textController.clear();
-    _focusNode.requestFocus(); // Keep focus
-    
-    // Scroll to bottom
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0.0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
-    
-    context.read<ChatProvider>().sendMessage(text);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final currentModel = context.watch<ChatProvider>().currentModel;
+    // Initialize Controller
+    final ChatController controller = Get.put(ChatController());
+    
+    final TextEditingController textController = TextEditingController();
+    final FocusNode focusNode = FocusNode();
+    final ScrollController scrollController = ScrollController();
+
+    void handleSubmitted(String text) {
+      if (text.trim().isEmpty) return;
+      textController.clear();
+      focusNode.requestFocus(); // Keep focus
+      
+      // Scroll to bottom
+      if (scrollController.hasClients) {
+        scrollController.animateTo(
+          0.0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+      
+      controller.sendMessage(text);
+    }
 
     return Scaffold(
       drawer: const ModelSelectorDrawer(),
@@ -44,21 +40,21 @@ class _ChatScreenState extends State<ChatScreen> {
         title: Column(
           children: [
             const Text('AI Assistant', style: TextStyle(fontSize: 18)),
-            Text(
-              currentModel.name,
+            Obx(() => Text(
+              controller.currentModel.value.name,
               style: TextStyle(
                 fontSize: 12, 
                 color: Theme.of(context).colorScheme.primary,
                 fontWeight: FontWeight.bold
               ),
-            ),
+            )),
           ],
         ),
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            onPressed: () => context.read<ChatProvider>().clearChat(),
+            onPressed: () => controller.clearChat(),
             tooltip: 'Clear Chat',
           ),
         ],
@@ -66,48 +62,54 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: Consumer<ChatProvider>(
-              builder: (context, chatProvider, child) {
-                if (chatProvider.messages.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(currentModel.iconAsset, style: const TextStyle(fontSize: 60)),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Start chatting with ${currentModel.name}',
-                          style: const TextStyle(color: Colors.grey, fontSize: 16),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  controller: _scrollController,
-                  reverse: true,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: chatProvider.messages.length,
-                  itemBuilder: (context, index) {
-                    final message = chatProvider.messages[index];
-                    return _MessageBubble(message: message);
-                  },
+            child: Obx(() {
+              if (controller.messages.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(controller.currentModel.value.iconAsset, style: const TextStyle(fontSize: 60)),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Start chatting with ${controller.currentModel.value.name}',
+                        style: const TextStyle(color: Colors.grey, fontSize: 16),
+                      ),
+                    ],
+                  ),
                 );
-              },
-            ),
+              }
+              return ListView.builder(
+                controller: scrollController,
+                reverse: true,
+                padding: const EdgeInsets.all(16),
+                itemCount: controller.messages.length,
+                itemBuilder: (context, index) {
+                  final message = controller.messages[index];
+                  return _MessageBubble(message: message);
+                },
+              );
+            }),
           ),
-          if (context.watch<ChatProvider>().isLoading)
-            const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: LinearProgressIndicator(minHeight: 2),
-            ),
-          _buildTextComposer(),
+          Obx(() => controller.isLoading.value 
+            ? const Padding(
+                padding: EdgeInsets.all(8.0),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            : const SizedBox.shrink()
+          ),
+          _buildTextComposer(context, controller, textController, focusNode, handleSubmitted),
         ],
       ),
     );
   }
 
-  Widget _buildTextComposer() {
+  Widget _buildTextComposer(
+      BuildContext context, 
+      ChatController controller, 
+      TextEditingController textController, 
+      FocusNode focusNode, 
+      Function(String) onSubmitted
+  ) {
     return Container(
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
@@ -131,13 +133,13 @@ class _ChatScreenState extends State<ChatScreen> {
                 borderRadius: BorderRadius.circular(30),
               ),
               child: TextField(
-                controller: _textController,
-                focusNode: _focusNode,
-                onSubmitted: _handleSubmitted,
+                controller: textController,
+                focusNode: focusNode,
+                onSubmitted: onSubmitted,
                 minLines: 1,
                 maxLines: 4,
                 decoration: const InputDecoration(
-                  hintText: 'Ask me anything...',
+                  hintText: 'Type or use voice...',
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 ),
@@ -145,12 +147,38 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           const SizedBox(width: 8),
+          // Voice Button
+          Obx(() => CircleAvatar(
+            radius: 24,
+            backgroundColor: controller.isListening.value 
+                ? Colors.redAccent 
+                : Theme.of(context).colorScheme.secondaryContainer,
+            child: IconButton(
+              icon: Icon(
+                controller.isListening.value ? Icons.mic : Icons.mic_none, 
+                size: 24, 
+                color: controller.isListening.value ? Colors.white : Theme.of(context).colorScheme.onSecondaryContainer,
+              ),
+              onPressed: () {
+                if (controller.isListening.value) {
+                  controller.stopListening();
+                } else {
+                  controller.startListening((text) {
+                    textController.text = text;
+                    onSubmitted(text);
+                  });
+                }
+              },
+            ),
+          )),
+          const SizedBox(width: 8),
+          // Send Button
           CircleAvatar(
             radius: 24,
             backgroundColor: Theme.of(context).colorScheme.primary,
             child: IconButton(
               icon: const Icon(Icons.send_rounded, size: 20, color: Colors.white),
-              onPressed: () => _handleSubmitted(_textController.text),
+              onPressed: () => onSubmitted(textController.text),
             ),
           ),
         ],
@@ -207,6 +235,39 @@ class _MessageBubble extends StatelessWidget {
                   ),
                 ),
               ),
+            
+            // Display Image if available
+            if (message.imageUrl != null) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  message.imageUrl!,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      height: 200,
+                      width: double.infinity,
+                      color: Colors.grey[300],
+                      child: const Center(child: CircularProgressIndicator()),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return const SizedBox(
+                      height: 150,
+                      child: Center(child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                          Text("Failed to load image", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        ],
+                      )),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+
             if (!isUser)
               MarkdownBody(
                 data: message.text,

@@ -3,7 +3,8 @@ class Message {
   final String text;
   final bool isUser;
   final DateTime timestamp;
-  final String? modelName; // To show which AI answered
+  final String? modelName;
+  final String? imageUrl; // New field for generated image URL
 
   Message({
     required this.id,
@@ -11,5 +12,6 @@ class Message {
     required this.isUser,
     required this.timestamp,
     this.modelName,
+    this.imageUrl,
   });
 }
