@@ -13,6 +13,9 @@ dependencies:
   # State Management
   get: ^4.6.6
   
+  # Local Storage
+  get_storage: ^2.1.1
+  
   # Networking
   http: ^1.2.0
   

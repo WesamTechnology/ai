@@ -1,28 +1,120 @@
 import 'package:get/get.dart';
+import 'package:get_storage/get_storage.dart';
 import 'package:uuid/uuid.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
 import '../models/message_model.dart';
 import '../models/ai_model.dart';
+import '../models/chat_session.dart';
 import '../services/ai_service.dart';
 
 class ChatController extends GetxController {
+  // Current Chat State
   var messages = <Message>[].obs;
   var isLoading = false.obs;
   var isListening = false.obs;
   var currentModel = AIModels.availableModels.first.obs;
+  var currentSessionId = "".obs;
+
+  // Sessions History
+  var sessions = <ChatSession>[].obs;
   
+  // Local Storage
+  final storage = GetStorage();
   late stt.SpeechToText _speech;
 
   @override
   void onInit() {
     super.onInit();
     _speech = stt.SpeechToText();
+    _loadSessionsFromStorage();
+    
+    // If no sessions exist, start a new one.
+    // Otherwise, don't auto-load (or load the last one if you prefer).
+    if (sessions.isEmpty) {
+      startNewChat();
+    } else {
+      // Start a new chat by default so user sees a fresh screen,
+      // but history is available in the drawer.
+      startNewChat();
+    }
+  }
+
+  void _loadSessionsFromStorage() {
+    List<dynamic>? storedSessions = storage.read<List<dynamic>>('sessions');
+    if (storedSessions != null) {
+      sessions.value = storedSessions
+          .map((e) => ChatSession.fromJson(e))
+          .toList();
+    }
+  }
+
+  void _saveSessionsToStorage() {
+    storage.write('sessions', sessions.map((e) => e.toJson()).toList());
+  }
+
+  void startNewChat() {
+    if (messages.isNotEmpty && currentSessionId.isNotEmpty) {
+      _saveCurrentSession();
+    }
+    
+    currentSessionId.value = const Uuid().v4();
+    messages.clear();
+  }
+
+  void loadSession(ChatSession session) {
+    if (messages.isNotEmpty) {
+      _saveCurrentSession();
+    }
+    
+    currentSessionId.value = session.id;
+    messages.assignAll(session.messages);
+    Get.back(); // Close drawer
+  }
+  
+  void _saveCurrentSession() {
+    if (messages.isEmpty) return;
+
+    final existingIndex = sessions.indexWhere((s) => s.id == currentSessionId.value);
+    
+    // Generate a simple title from the first user message
+    String title = "New Chat";
+    final firstUserMsg = messages.firstWhereOrNull((m) => m.isUser);
+    if (firstUserMsg != null) {
+      title = firstUserMsg.text.length > 20 
+          ? "${firstUserMsg.text.substring(0, 20)}..." 
+          : firstUserMsg.text;
+    }
+
+    final session = ChatSession(
+      id: currentSessionId.value,
+      title: title,
+      messages: List.from(messages),
+      lastModified: DateTime.now(),
+    );
+
+    if (existingIndex >= 0) {
+      sessions[existingIndex] = session;
+    } else {
+      sessions.insert(0, session);
+    }
+    
+    // Persist to storage
+    _saveSessionsToStorage();
+  }
+
+  void deleteSession(String id) {
+    sessions.removeWhere((s) => s.id == id);
+    _saveSessionsToStorage(); // Update storage
+    
+    if (currentSessionId.value == id) {
+      startNewChat();
+    }
   }
 
   void setModel(AIModel model) {
     currentModel.value = model;
-    // Show a snackbar using Get
+    Get.back(); // Close bottom sheet
     Get.snackbar(
       "Model Changed",
       "Switched to ${model.name}",
@@ -49,6 +141,8 @@ class ChatController extends GetxController {
       } else {
         await _generateText(text);
       }
+      // Auto-save session after each exchange
+      _saveCurrentSession();
     } catch (e) {
       _addErrorMessage("Error: ${e.toString()}");
     } finally {
@@ -69,10 +163,7 @@ class ChatController extends GetxController {
   }
 
   Future<void> _generateImage(String prompt) async {
-    // Pollinations image generation is URL-based, so we assume success if we build the URL.
-    // In a real app, you might want to pre-fetch to check validity, but for now we display directly.
     final imageUrl = AIService.generateImageUrl(prompt);
-    
     final botMessage = Message(
       id: const Uuid().v4(),
       text: "Here is your image for: \"$prompt\"",
@@ -87,7 +178,7 @@ class ChatController extends GetxController {
   Future<void> startListening(Function(String) onResult) async {
     var status = await Permission.microphone.request();
     if (status != PermissionStatus.granted) {
-       Get.snackbar("Permission Denied", "Microphone access is required for voice input.");
+       Get.snackbar("Permission Denied", "Microphone access is required.");
        return;
     }
 
@@ -97,7 +188,7 @@ class ChatController extends GetxController {
       },
       onError: (errorNotification) {
         isListening.value = false;
-        Get.snackbar("Voice Error", errorNotification.errorMsg);
+        // Get.snackbar("Voice Error", errorNotification.errorMsg);
       },
     );
 
@@ -135,5 +226,6 @@ class ChatController extends GetxController {
   
   void clearChat() {
     messages.clear();
+    _saveCurrentSession(); // Updates the session to empty
   }
 }

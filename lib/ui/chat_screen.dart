@@ -3,7 +3,8 @@ import 'package:get/get.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../controllers/chat_controller.dart';
 import '../models/message_model.dart';
-import '../widgets/model_selector_drawer.dart';
+import '../models/ai_model.dart';
+import '../widgets/chat_history_drawer.dart';
 
 class ChatScreen extends StatelessWidget {
   const ChatScreen({super.key});
@@ -34,28 +35,95 @@ class ChatScreen extends StatelessWidget {
       controller.sendMessage(text);
     }
 
-    return Scaffold(
-      drawer: const ModelSelectorDrawer(),
-      appBar: AppBar(
-        title: Column(
-          children: [
-            const Text('AI Assistant', style: TextStyle(fontSize: 18)),
-            Obx(() => Text(
-              controller.currentModel.value.name,
-              style: TextStyle(
-                fontSize: 12, 
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.bold
+    void showModelSelector() {
+      Get.bottomSheet(
+        Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            )),
-          ],
+              const Text(
+                "Select AI Model",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: AIModels.availableModels.map((model) {
+                    return Obx(() {
+                      final isSelected = controller.currentModel.value.id == model.id;
+                      return ListTile(
+                        leading: Text(model.iconAsset, style: const TextStyle(fontSize: 24)),
+                        title: Text(model.name),
+                        subtitle: Text(model.description, style: const TextStyle(fontSize: 12)),
+                        trailing: isSelected 
+                            ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary) 
+                            : null,
+                        onTap: () => controller.setModel(model),
+                      );
+                    });
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        isScrollControlled: true,
+      );
+    }
+
+    return Scaffold(
+      drawer: const ChatHistoryDrawer(),
+      appBar: AppBar(
+        title: GestureDetector(
+          onTap: showModelSelector,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Obx(() => Text(
+                  controller.currentModel.value.name,
+                  style: TextStyle(
+                    fontSize: 14, 
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                )),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.keyboard_arrow_down, 
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ],
+            ),
+          ),
         ),
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => controller.clearChat(),
-            tooltip: 'Clear Chat',
+            icon: const Icon(Icons.add),
+            onPressed: () => controller.startNewChat(),
+            tooltip: 'New Chat',
           ),
         ],
       ),
@@ -65,16 +133,30 @@ class ChatScreen extends StatelessWidget {
             child: Obx(() {
               if (controller.messages.isEmpty) {
                 return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(controller.currentModel.value.iconAsset, style: const TextStyle(fontSize: 60)),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Start chatting with ${controller.currentModel.value.name}',
-                        style: const TextStyle(color: Colors.grey, fontSize: 16),
-                      ),
-                    ],
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        GestureDetector(
+                          onTap: showModelSelector,
+                          child: Column(
+                            children: [
+                              Text(controller.currentModel.value.iconAsset, style: const TextStyle(fontSize: 60)),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Using ${controller.currentModel.value.name}',
+                                style: const TextStyle(color: Colors.grey, fontSize: 16),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Tap here to change model',
+                                style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               }
@@ -147,7 +229,6 @@ class ChatScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // Voice Button
           Obx(() => CircleAvatar(
             radius: 24,
             backgroundColor: controller.isListening.value 
@@ -172,7 +253,6 @@ class ChatScreen extends StatelessWidget {
             ),
           )),
           const SizedBox(width: 8),
-          // Send Button
           CircleAvatar(
             radius: 24,
             backgroundColor: Theme.of(context).colorScheme.primary,
@@ -236,7 +316,6 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ),
             
-            // Display Image if available
             if (message.imageUrl != null) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
@@ -254,13 +333,7 @@ class _MessageBubble extends StatelessWidget {
                   errorBuilder: (context, error, stackTrace) {
                     return const SizedBox(
                       height: 150,
-                      child: Center(child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.broken_image, size: 40, color: Colors.grey),
-                          Text("Failed to load image", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                        ],
-                      )),
+                      child: Center(child: Icon(Icons.broken_image, color: Colors.grey)),
                     );
                   },
                 ),
