@@ -1,8 +1,13 @@
+import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:uuid/uuid.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:gal/gal.dart';
 import '../models/message_model.dart';
 import '../models/ai_model.dart';
 import '../models/chat_session.dart';
@@ -15,6 +20,9 @@ class ChatController extends GetxController {
   var isListening = false.obs;
   var currentModel = AIModels.availableModels.first.obs;
   var currentSessionId = "".obs;
+  
+  // Reply State
+  var replyToMessage = Rxn<Message>(); // The message currently being replied to
 
   // Sessions History
   var sessions = <ChatSession>[].obs;
@@ -28,14 +36,9 @@ class ChatController extends GetxController {
     super.onInit();
     _speech = stt.SpeechToText();
     _loadSessionsFromStorage();
-    
-    // If no sessions exist, start a new one.
-    // Otherwise, don't auto-load (or load the last one if you prefer).
     if (sessions.isEmpty) {
       startNewChat();
     } else {
-      // Start a new chat by default so user sees a fresh screen,
-      // but history is available in the drawer.
       startNewChat();
     }
   }
@@ -60,6 +63,7 @@ class ChatController extends GetxController {
     
     currentSessionId.value = const Uuid().v4();
     messages.clear();
+    replyToMessage.value = null;
   }
 
   void loadSession(ChatSession session) {
@@ -69,7 +73,8 @@ class ChatController extends GetxController {
     
     currentSessionId.value = session.id;
     messages.assignAll(session.messages);
-    Get.back(); // Close drawer
+    replyToMessage.value = null;
+    Get.back();
   }
   
   void _saveCurrentSession() {
@@ -77,7 +82,6 @@ class ChatController extends GetxController {
 
     final existingIndex = sessions.indexWhere((s) => s.id == currentSessionId.value);
     
-    // Generate a simple title from the first user message
     String title = "New Chat";
     final firstUserMsg = messages.firstWhereOrNull((m) => m.isUser);
     if (firstUserMsg != null) {
@@ -99,14 +103,12 @@ class ChatController extends GetxController {
       sessions.insert(0, session);
     }
     
-    // Persist to storage
     _saveSessionsToStorage();
   }
 
   void deleteSession(String id) {
     sessions.removeWhere((s) => s.id == id);
-    _saveSessionsToStorage(); // Update storage
-    
+    _saveSessionsToStorage();
     if (currentSessionId.value == id) {
       startNewChat();
     }
@@ -114,7 +116,7 @@ class ChatController extends GetxController {
 
   void setModel(AIModel model) {
     currentModel.value = model;
-    Get.back(); // Close bottom sheet
+    Get.back();
     Get.snackbar(
       "Model Changed",
       "Switched to ${model.name}",
@@ -123,25 +125,47 @@ class ChatController extends GetxController {
     );
   }
 
+  // Reply Logic
+  void setReplyMessage(Message message) {
+    replyToMessage.value = message;
+  }
+
+  void cancelReply() {
+    replyToMessage.value = null;
+  }
+
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
+
+    // Include context if replying
+    String finalPrompt = text;
+    String? replyContext;
+    if (replyToMessage.value != null) {
+      replyContext = "Replying to: \"${replyToMessage.value!.text}\"";
+      finalPrompt = "Context: I am replying to this message: \"${replyToMessage.value!.text}\".\nMy Reply: $text";
+    }
 
     final userMessage = Message(
       id: const Uuid().v4(),
       text: text,
       isUser: true,
       timestamp: DateTime.now(),
+      replyToText: replyToMessage.value?.text, // We need to add this field to model
     );
+    
     _addMessage(userMessage);
+    
+    // Clear reply AFTER adding the message
+    replyToMessage.value = null;
+    
     isLoading.value = true;
 
     try {
       if (currentModel.value.isImageGenerator) {
         await _generateImage(text);
       } else {
-        await _generateText(text);
+        await _generateText(finalPrompt);
       }
-      // Auto-save session after each exchange
       _saveCurrentSession();
     } catch (e) {
       _addErrorMessage("Error: ${e.toString()}");
@@ -175,23 +199,51 @@ class ChatController extends GetxController {
     _addMessage(botMessage);
   }
 
+  // Utilities
+  Future<void> saveImage(String imageUrl) async {
+    try {
+      // Request storage permission
+      if (!await Gal.hasAccess()) {
+         await Gal.requestAccess();
+      }
+
+      // Download image
+      final response = await http.get(Uri.parse(imageUrl));
+      final bytes = response.bodyBytes;
+
+      // Get temporary directory
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/image_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(bytes);
+
+      // Save to Gallery
+      await Gal.putImage(file.path);
+      
+      Get.snackbar("Success", "Image saved to Gallery!", backgroundColor: Get.theme.colorScheme.secondaryContainer);
+    } catch (e) {
+      Get.snackbar("Error", "Failed to save image: $e", backgroundColor: Get.theme.colorScheme.errorContainer);
+    }
+  }
+
+  void copyText(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    Get.snackbar("Copied", "Text copied to clipboard", duration: const Duration(seconds: 1));
+  }
+
   Future<void> startListening(Function(String) onResult) async {
     var status = await Permission.microphone.request();
     if (status != PermissionStatus.granted) {
        Get.snackbar("Permission Denied", "Microphone access is required.");
        return;
     }
-
     bool available = await _speech.initialize(
       onStatus: (status) {
         if (status == 'notListening') isListening.value = false;
       },
       onError: (errorNotification) {
         isListening.value = false;
-        // Get.snackbar("Voice Error", errorNotification.errorMsg);
       },
     );
-
     if (available) {
       isListening.value = true;
       _speech.listen(
@@ -226,6 +278,7 @@ class ChatController extends GetxController {
   
   void clearChat() {
     messages.clear();
-    _saveCurrentSession(); // Updates the session to empty
+    replyToMessage.value = null;
+    _saveCurrentSession();
   }
 }

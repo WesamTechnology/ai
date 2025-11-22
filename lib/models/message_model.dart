@@ -5,6 +5,7 @@ class Message {
   final DateTime timestamp;
   final String? modelName;
   final String? imageUrl;
+  final String? replyToText; // New field for storing reply context
 
   Message({
     required this.id,
@@ -13,6 +14,7 @@ class Message {
     required this.timestamp,
     this.modelName,
     this.imageUrl,
+    this.replyToText,
   });
 
   // JSON Serialization
@@ -23,6 +25,7 @@ class Message {
     'timestamp': timestamp.toIso8601String(),
     'modelName': modelName,
     'imageUrl': imageUrl,
+    'replyToText': replyToText,
   };
 
   factory Message.fromJson(Map<String, dynamic> json) => Message(
@@ -32,5 +35,6 @@ class Message {
     timestamp: DateTime.parse(json['timestamp']),
     modelName: json['modelName'],
     imageUrl: json['imageUrl'],
+    replyToText: json['replyToText'],
   );
 }

@@ -11,9 +11,7 @@ class ChatScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Initialize Controller
     final ChatController controller = Get.put(ChatController());
-    
     final TextEditingController textController = TextEditingController();
     final FocusNode focusNode = FocusNode();
     final ScrollController scrollController = ScrollController();
@@ -21,9 +19,8 @@ class ChatScreen extends StatelessWidget {
     void handleSubmitted(String text) {
       if (text.trim().isEmpty) return;
       textController.clear();
-      focusNode.requestFocus(); // Keep focus
+      focusNode.requestFocus(); 
       
-      // Scroll to bottom
       if (scrollController.hasClients) {
         scrollController.animateTo(
           0.0,
@@ -167,7 +164,7 @@ class ChatScreen extends StatelessWidget {
                 itemCount: controller.messages.length,
                 itemBuilder: (context, index) {
                   final message = controller.messages[index];
-                  return _MessageBubble(message: message);
+                  return _MessageBubble(message: message, controller: controller);
                 },
               );
             }),
@@ -179,10 +176,53 @@ class ChatScreen extends StatelessWidget {
               )
             : const SizedBox.shrink()
           ),
+          _buildReplyPreview(context, controller),
           _buildTextComposer(context, controller, textController, focusNode, handleSubmitted),
         ],
       ),
     );
+  }
+
+  Widget _buildReplyPreview(BuildContext context, ChatController controller) {
+    return Obx(() {
+      if (controller.replyToMessage.value == null) return const SizedBox.shrink();
+      
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+        child: Row(
+          children: [
+            const Icon(Icons.reply, color: Colors.grey),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    controller.replyToMessage.value!.isUser ? "Replying to You" : "Replying to AI",
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                  Text(
+                    controller.replyToMessage.value!.text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 20),
+              onPressed: controller.cancelReply,
+            )
+          ],
+        ),
+      );
+    });
   }
 
   Widget _buildTextComposer(
@@ -269,8 +309,46 @@ class ChatScreen extends StatelessWidget {
 
 class _MessageBubble extends StatelessWidget {
   final Message message;
+  final ChatController controller;
 
-  const _MessageBubble({required this.message});
+  const _MessageBubble({required this.message, required this.controller});
+
+  void _showOptions(BuildContext context) {
+    Get.bottomSheet(
+      Container(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.copy),
+              title: const Text('Copy Text'),
+              onTap: () {
+                Get.back();
+                controller.copyText(message.text);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.reply),
+              title: const Text('Reply'),
+              onTap: () {
+                Get.back();
+                controller.setReplyMessage(message);
+              },
+            ),
+            if (message.imageUrl != null)
+              ListTile(
+                leading: const Icon(Icons.download),
+                title: const Text('Save Image'),
+                onTap: () {
+                  Get.back();
+                  controller.saveImage(message.imageUrl!);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -283,87 +361,112 @@ class _MessageBubble extends StatelessWidget {
       bottomRight: isUser ? const Radius.circular(4) : const Radius.circular(20),
     );
 
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
-        decoration: BoxDecoration(
-          color: isUser ? colorScheme.primary : colorScheme.surfaceContainerHighest,
-          borderRadius: borderRadius,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              offset: const Offset(0, 1),
-              blurRadius: 2,
-            )
-          ],
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (!isUser && message.modelName != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4.0),
-                child: Text(
-                  message.modelName!,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: colorScheme.onSurfaceVariant.withOpacity(0.6),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            
-            if (message.imageUrl != null) ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  message.imageUrl!,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return Container(
-                      height: 200,
-                      width: double.infinity,
-                      color: Colors.grey[300],
-                      child: const Center(child: CircularProgressIndicator()),
-                    );
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    return const SizedBox(
-                      height: 150,
-                      child: Center(child: Icon(Icons.broken_image, color: Colors.grey)),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-
-            if (!isUser)
-              MarkdownBody(
-                data: message.text,
-                styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-                  p: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 15),
-                  code: TextStyle(
-                    backgroundColor: colorScheme.surface,
-                    fontFamily: 'monospace',
-                    fontSize: 13,
-                  ),
-                  codeblockDecoration: BoxDecoration(
-                    color: colorScheme.surface,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.withOpacity(0.2)),
-                  ),
-                ),
+    return GestureDetector(
+      onLongPress: () => _showOptions(context),
+      child: Align(
+        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
+          decoration: BoxDecoration(
+            color: isUser ? colorScheme.primary : colorScheme.surfaceContainerHighest,
+            borderRadius: borderRadius,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                offset: const Offset(0, 1),
+                blurRadius: 2,
               )
-            else
-              Text(
-                message.text,
-                style: TextStyle(color: colorScheme.onPrimary, fontSize: 15),
-              ),
-          ],
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Reply Context
+              if (message.replyToText != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border(left: BorderSide(color: Colors.white.withOpacity(0.5), width: 3)),
+                  ),
+                  child: Text(
+                    message.replyToText!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isUser ? Colors.white.withOpacity(0.9) : colorScheme.onSurface.withOpacity(0.7),
+                    ),
+                  ),
+                ),
+
+              if (!isUser && message.modelName != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4.0),
+                  child: Text(
+                    message.modelName!,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: colorScheme.onSurfaceVariant.withOpacity(0.6),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              
+              if (message.imageUrl != null) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    message.imageUrl!,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        height: 200,
+                        width: double.infinity,
+                        color: Colors.grey[300],
+                        child: const Center(child: CircularProgressIndicator()),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return const SizedBox(
+                        height: 150,
+                        child: Center(child: Icon(Icons.broken_image, color: Colors.grey)),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              if (!isUser)
+                MarkdownBody(
+                  data: message.text,
+                  selectable: true, // Enable text selection
+                  styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                    p: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 15),
+                    code: TextStyle(
+                      backgroundColor: colorScheme.surface,
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                    ),
+                    codeblockDecoration: BoxDecoration(
+                      color: colorScheme.surface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.withOpacity(0.2)),
+                    ),
+                  ),
+                )
+              else
+                Text(
+                  message.text,
+                  style: TextStyle(color: colorScheme.onPrimary, fontSize: 15),
+                ),
+            ],
+          ),
         ),
       ),
     );

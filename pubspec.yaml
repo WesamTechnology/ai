@@ -12,8 +12,6 @@ dependencies:
   
   # State Management
   get: ^4.6.6
-  
-  # Local Storage
   get_storage: ^2.1.1
   
   # Networking
@@ -22,6 +20,10 @@ dependencies:
   # UI/Text Rendering
   flutter_markdown: ^0.7.2
   google_fonts: ^6.2.1
+  
+  # Media & Files
+  gal: ^2.3.0
+  path_provider: ^2.1.2
   
   # Voice & Utilities
   speech_to_text: ^7.3.0
